@@ -5,17 +5,18 @@
 @Desc  :
 """
 import json
+import os
 
 import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning import Trainer
 import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import TensorBoardLogger
-import lightning
 from model import MInterface
 from data import DInterface
 from utils import load_model_path_by_args
-
+import torch.distributed as dist
+from pytorch_lightning.strategies import DDPStrategy
 
 def load_callbacks(args):
     callbacks = [plc.EarlyStopping(
@@ -52,8 +53,13 @@ def main(args):
     # logger = TensorBoardLogger(save_dir='kfold_log', name=args.log_dir)
     args.callbacks = load_callbacks(args)
     # args.logger = logger
-
-    trainer = Trainer(limit_train_batches=100, max_epochs=args.epochs, devices=args.devices, log_every_n_steps=16, callbacks=args.callbacks)
+    # 根据当前系统决定使用哪个backend..  PS:windows下分布式训练只只能用gloo，只有linux才支持nccl
+    platform_name = os.name
+    strategy = DDPStrategy(process_group_backend='nccl', find_unused_parameters=True)
+    if platform_name == 'nt':
+        strategy = DDPStrategy(process_group_backend='gloo', find_unused_parameters=True)
+    trainer = Trainer(limit_train_batches=100, max_epochs=args.epochs, devices=args.devices, log_every_n_steps=16,
+                      callbacks=args.callbacks, strategy=strategy)
     trainer.fit(model, data_module)
 
 
@@ -61,6 +67,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--cfg', default="config.json", type=str)
     args = parser.parse_args()
+
     # 将json的配置参数转为args
     args_dict = vars(args)
     config_path = args.cfg
