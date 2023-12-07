@@ -18,6 +18,7 @@ from utils import load_model_path_by_args
 import torch.distributed as dist
 from pytorch_lightning.strategies import DDPStrategy
 
+
 def load_callbacks(args):
     callbacks = [plc.EarlyStopping(
         monitor='val_iou',
@@ -54,12 +55,15 @@ def main(args):
     args.callbacks = load_callbacks(args)
     # args.logger = logger
     # 根据当前系统决定使用哪个backend..  PS:windows下分布式训练只只能用gloo，只有linux才支持nccl
-    platform_name = os.name
-    strategy = DDPStrategy(process_group_backend='nccl', find_unused_parameters=True)
-    if platform_name == 'nt':
-        strategy = DDPStrategy(process_group_backend='gloo', find_unused_parameters=True)
     trainer = Trainer(limit_train_batches=100, max_epochs=args.epochs, devices=args.devices, log_every_n_steps=16,
-                      callbacks=args.callbacks, strategy=strategy)
+                      callbacks=args.callbacks)
+    if len(args.devices) > 1:
+        platform_name = os.name
+        strategy = DDPStrategy(process_group_backend='nccl', find_unused_parameters=True)
+        if platform_name == 'nt':
+            strategy = DDPStrategy(process_group_backend='gloo', find_unused_parameters=True)
+        trainer = Trainer(limit_train_batches=100, max_epochs=args.epochs, devices=args.devices, log_every_n_steps=16,
+                          callbacks=args.callbacks, strategy=strategy)
     trainer.fit(model, data_module)
 
 

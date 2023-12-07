@@ -11,7 +11,6 @@ import importlib
 from torch.nn import functional as F
 import torch.optim.lr_scheduler as lrs
 import pytorch_lightning as pl
-from segmentation.utils import get_confusion_matrix
 import numpy as np
 
 class MInterface(pl.LightningModule):

@@ -10,7 +10,7 @@ import importlib
 from torch.nn import functional as F
 import torch.optim.lr_scheduler as lrs
 import pytorch_lightning as pl
-from segmentation.utils import get_confusion_matrix
+from utils import get_confusion_matrix
 import numpy as np
 
 class MInterface(pl.LightningModule):
@@ -67,6 +67,13 @@ class MInterface(pl.LightningModule):
             mean_iou /= 3
         else:
             loss = self.loss_function(out, labels)
+            out = torch.softmax(out, dim=1)
+            confusion_matrix = get_confusion_matrix(labels, out, labels.size(), self.hparams["num_classes"])
+            pos = confusion_matrix.sum(1)
+            res = confusion_matrix.sum(0)
+            tp = np.diag(confusion_matrix)
+            iou_array = (tp / np.maximum(1.0, pos + res - tp))
+            mean_iou = iou_array.mean()
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"],
                  sync_dist=len(self.hparams["devices"]) > 1)
         self.log('val_iou', mean_iou,
@@ -134,7 +141,7 @@ class MInterface(pl.LightningModule):
             from self.hparams dictionary. You can also input any args
             to overwrite the corresponding value in self.hparams.
         """
-        class_args = inspect.getargspec(Model.__init__).args[1:]
+        class_args = list(inspect.signature(Model.__init__).parameters.keys())[1:]
         inkeys = self.hparams.keys()
         args1 = {}
         for arg in class_args:
