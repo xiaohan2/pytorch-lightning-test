@@ -103,7 +103,7 @@ class MInterface(pl.LightningModule):
             from self.hparams dictionary. You can also input any args
             to overwrite the corresponding value in self.hparams.
         """
-        class_args = inspect.getargspec(Model.__init__).args[1:]
+        class_args = list(inspect.signature(Model.__init__).parameters.keys())[1:]
         inkeys = self.hparams.keys()
         args1 = {}
         for arg in class_args:
