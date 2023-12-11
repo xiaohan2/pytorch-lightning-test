@@ -12,6 +12,8 @@ import torch.optim.lr_scheduler as lrs
 import pytorch_lightning as pl
 from utils import get_confusion_matrix
 import numpy as np
+import segmentation_models_pytorch as smp
+
 
 class MInterface(pl.LightningModule):
     def __init__(self, model_name, loss, lr, **kargs):
@@ -135,6 +137,14 @@ class MInterface(pl.LightningModule):
             raise ValueError(
                 f'Invalid Module File Name or Invalid Class Name {name}.{camel_name}!')
         self.model = self.instancialize(Model)
+
+        # 按以下方式使用segmentation_models_pytorch中的模型
+        # self.model = smp.Unet(
+        #     encoder_name="resnet34",  # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
+        #     encoder_weights="imagenet",  # use `imagenet` pre-trained weights for encoder initialization
+        #     in_channels=3,  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
+        #     classes=2,  # model output channels (number of classes in your dataset)
+        # )
 
     def instancialize(self, Model, **other_args):
         """ Instancialize a model using the corresponding parameters
