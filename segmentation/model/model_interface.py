@@ -10,7 +10,7 @@ import importlib
 from torch.nn import functional as F
 import torch.optim.lr_scheduler as lrs
 import pytorch_lightning as pl
-from utils import get_confusion_matrix
+from utils import get_confusion_matrix, BondaryLoss
 import numpy as np
 import segmentation_models_pytorch as smp
 
@@ -26,7 +26,10 @@ class MInterface(pl.LightningModule):
         return self.model(img)
 
     def training_step(self, batch, batch_idx):
-        img, labels = batch
+        if self.hparams["model_name"] == 'pid_net':
+            img, labels, edge = batch
+        else:
+            img, labels = batch
         labels = labels.long()
         out = self(img)
         if self.hparams["model_name"] in ['pp_lite_seg', 'pid_net']:
@@ -38,16 +41,21 @@ class MInterface(pl.LightningModule):
                         h, w), mode='bilinear', align_corners=True)
 
             if self.hparams["model_name"] == 'pid_net':
-                loss = sum([self.loss_function(x, labels) for x in out[:-1]])
+                # loss = sum([sum([loss_function(x, labels) for x in out[:-1]]) for loss_function in self.loss_functions])
+                loss = sum([self.loss_functions[0](x, labels) for x in out[:-1]]) + self.loss_functions[1](out[-1],
+                                                                                                           edge)
             else:
-                loss = sum([self.loss_function(x, labels) for x in out])
+                loss = sum([sum([loss_function(x, labels) for x in out]) for loss_function in self.loss_functions])
         else:
-            loss = self.loss_function(out, labels)
+            loss = sum([loss_function(out, labels) for loss_function in self.loss_functions])
         self.log('loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"])
         return loss
 
     def validation_step(self, batch, batch_idx):
-        img, labels = batch
+        if self.hparams["model_name"] == 'pid_net':
+            img, labels, edge = batch
+        else:
+            img, labels = batch
         labels = labels.long()
         out = self(img)
         mean_iou = 0
@@ -64,9 +72,10 @@ class MInterface(pl.LightningModule):
                     out[i] = F.interpolate(out[i], size=size[-2:], mode='bilinear', align_corners=True)
 
             if self.hparams["model_name"] == 'pid_net':
-                loss = sum([self.loss_function(x, labels) for x in out[:-1]])
+                # loss = sum([sum([loss_function(x, labels) for x in out[:-1]]) for loss_function in self.loss_functions])
+                loss = sum([self.loss_functions[0](x, labels) for x in out[:-1]]) + self.loss_functions[1](out[-1], edge)
             else:
-                loss = sum([self.loss_function(x, labels) for x in out])
+                loss = sum([sum([loss_function(x, labels) for x in out]) for loss_function in self.loss_functions])
 
             for i, x in enumerate(out):
                 confusion_matrix[..., i] += get_confusion_matrix(
@@ -83,9 +92,9 @@ class MInterface(pl.LightningModule):
                 iou_array = (tp / np.maximum(1.0, pos + res - tp))
                 iou = iou_array.mean()
                 mean_iou += iou
-            mean_iou /= len(out)
+            # mean_iou /= len(out)
         else:
-            loss = self.loss_function(out, labels)
+            loss = sum([self.loss_function(out, labels) for loss_function in self.loss_functions])
             out = torch.softmax(out, dim=1)
             confusion_matrix = get_confusion_matrix(labels, out, labels.size(), self.hparams["num_classes"])
             pos = confusion_matrix.sum(1)
@@ -129,17 +138,22 @@ class MInterface(pl.LightningModule):
             return [optimizer], [scheduler]
 
     def configure_loss(self):
-        loss = self.hparams.loss.lower()
-        if loss == 'mse':
-            self.loss_function = F.mse_loss
-        elif loss == 'l1':
-            self.loss_function = F.l1_loss
-        elif loss == 'bce':
-            self.loss_function = F.binary_cross_entropy
-        elif loss == 'ce':
-            self.loss_function = F.cross_entropy
-        else:
-            raise ValueError("Invalid Loss Type!")
+        loss = self.hparams.loss
+        self.loss_functions = []
+        loss_names = [l.lower() for l in loss]
+        for loss_name in loss_names:
+            if loss_name == 'mse':
+                self.loss_functions.append(F.mse_loss)
+            elif loss_name == 'l1':
+                self.loss_functions.append(F.l1_loss)
+            elif loss_name == 'bce':
+                self.loss_functions.append(F.binary_cross_entropy)
+            elif loss_name == 'ce':
+                self.loss_functions.append(F.cross_entropy)
+            elif loss_name == 'bd':
+                self.loss_functions.append(BondaryLoss())
+            else:
+                raise ValueError("Invalid Loss Type!")
 
     def load_model(self):
         name = self.hparams.model_name

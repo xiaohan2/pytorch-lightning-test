@@ -43,6 +43,8 @@ class SegmentData(data.Dataset):
         self.img_mean = config["img_mean"]
         self.img_std = config["img_std"]
         self.is_label_divide = config["is_label_divide"]
+        self.need_edge = config["need_edge"]
+        self.edge_size = config["edge_size"]
 
     def __len__(self):
         return len(self.path_list)
@@ -67,11 +69,22 @@ class SegmentData(data.Dataset):
             Resize(self.crop_size[0], self.crop_size[1]),
             Normalize(mean=self.img_mean, std=self.img_std)
         ])
+
         aug_data = trans_train(image=image, mask=label) if self.train else trans_val(image=image, mask=label)
         x = aug_data["image"]
         target = aug_data["mask"]
+        # 获取边缘
+        y_k_size = 6
+        x_k_size = 6
+        edge = cv2.Canny(target, 0.1, 0.2)
+        kernel = np.ones((self.edge_size, self.edge_size), np.uint8)
+        edge = edge[y_k_size:-y_k_size, x_k_size:-x_k_size]
+        edge = np.pad(edge, ((y_k_size, y_k_size), (x_k_size, x_k_size)), mode='constant')
+        edge = (cv2.dilate(edge, kernel, iterations=1) > 50) * 1.0
         if image.ndim == 3:
             x = np.transpose(x, axes=[2, 0, 1])
         elif image.ndim == 2:
             x = np.expand_dims(x, axis=0)
+        if self.need_edge:
+            return torch.from_numpy(x), torch.from_numpy(target), torch.from_numpy(edge)
         return torch.from_numpy(x), torch.from_numpy(target)
