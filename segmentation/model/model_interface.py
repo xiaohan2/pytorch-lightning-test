@@ -75,7 +75,8 @@ class MInterface(pl.LightningModule):
                     size,
                     self.hparams["num_classes"]
                 )
-            for i in range(len(out)):
+            # 只取第一个通道的结果算iou
+            for i in range(1):
                 pos = confusion_matrix[..., i].sum(1)
                 res = confusion_matrix[..., i].sum(0)
                 tp = np.diag(confusion_matrix[..., i])
