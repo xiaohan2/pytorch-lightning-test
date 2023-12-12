@@ -23,8 +23,8 @@ def load_callbacks(args):
     callbacks = [plc.EarlyStopping(
         monitor='val_iou',
         mode='max',
-        patience=10,
-        min_delta=0.001
+        patience=1000,
+        min_delta=0.0001
     ), plc.ModelCheckpoint(
         monitor='val_iou',
         filename='best-{epoch:02d}-{val_iou:.3f}',

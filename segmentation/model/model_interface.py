@@ -29,8 +29,18 @@ class MInterface(pl.LightningModule):
         img, labels = batch
         labels = labels.long()
         out = self(img)
-        if self.hparams["model_name"] == "pp_lite_seg":
-            loss = sum([self.loss_function(x, labels) for x in out])
+        if self.hparams["model_name"] in ['pp_lite_seg', 'pid_net']:
+            h, w = labels.size(1), labels.size(2)
+            ph, pw = out[0].size(2), out[0].size(3)
+            if ph != h or pw != w:
+                for i in range(len(out)):
+                    out[i] = F.interpolate(out[i], size=(
+                        h, w), mode='bilinear', align_corners=True)
+
+            if self.hparams["model_name"] == 'pid_net':
+                loss = sum([self.loss_function(x, labels) for x in out[:-1]])
+            else:
+                loss = sum([self.loss_function(x, labels) for x in out])
         else:
             loss = self.loss_function(out, labels)
         self.log('loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"])
@@ -41,32 +51,38 @@ class MInterface(pl.LightningModule):
         labels = labels.long()
         out = self(img)
         mean_iou = 0
-        if self.hparams["model_name"] == "pp_lite_seg":
+        if self.hparams["model_name"] in ['pp_lite_seg', 'pid_net']:
+            num_putput = 3 if self.hparams["model_name"] == "pp_lite_seg" else 3
             confusion_matrix = np.zeros(
-                (self.hparams["num_classes"], self.hparams["num_classes"], 3))
-            loss = sum([self.loss_function(x, labels) for x in out])
-            size = labels.size()
+                (self.hparams["num_classes"], self.hparams["num_classes"], num_putput))
             if not isinstance(out, (list, tuple)):
                 out = [out]
+            size = labels.size()
+            ph, pw = out[0].size(2), out[0].size(3)
+            if ph != size[-2] or pw != size[-1]:
+                for i in range(len(out)):
+                    out[i] = F.interpolate(out[i], size=size[-2:], mode='bilinear', align_corners=True)
+
+            if self.hparams["model_name"] == 'pid_net':
+                loss = sum([self.loss_function(x, labels) for x in out[:-1]])
+            else:
+                loss = sum([self.loss_function(x, labels) for x in out])
+
             for i, x in enumerate(out):
-                x = F.interpolate(
-                    input=x, size=size[-2:],
-                    mode='nearest'
-                )
                 confusion_matrix[..., i] += get_confusion_matrix(
                     labels,
                     x,
                     size,
                     self.hparams["num_classes"]
                 )
-            for i in range(3):
+            for i in range(len(out)):
                 pos = confusion_matrix[..., i].sum(1)
                 res = confusion_matrix[..., i].sum(0)
                 tp = np.diag(confusion_matrix[..., i])
                 iou_array = (tp / np.maximum(1.0, pos + res - tp))
                 iou = iou_array.mean()
                 mean_iou += iou
-            mean_iou /= 3
+            mean_iou /= len(out)
         else:
             loss = self.loss_function(out, labels)
             out = torch.softmax(out, dim=1)
