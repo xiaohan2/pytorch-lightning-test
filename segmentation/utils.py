@@ -11,6 +11,7 @@ import numpy as np
 import torch.nn as nn
 import torch
 from torch.nn import functional as F
+from model.prompt_sam import PromptSam
 
 
 def load_model_path(root=None, version=None, v_num=None, best=False):
@@ -235,6 +236,33 @@ def calc_iou(result_contours, label_contours):
     return total_iou / (len(result_contours) - 1)
 
 
+def checkpoint2model(model, ckpt_file, save_path):
+    """
+    将ckpt文件转为只包含模型参数的pt文件
+    :param model:
+    :param ckpt_file:
+    :param save_path:
+    """
+    checkpoint = torch.load(ckpt_file)
+    # model.load_state_dict(checkpoint['state_dict'])
+    torch.save(checkpoint['state_dict'], save_path)
+
+
 if __name__ == '__main__':
     root_path = "dataset/flower_photos"
-    generate_txt(root_path)
+    ckpt_file = "lightning_logs/version_18/checkpoints/best-epoch=445-val_iou=0.964.ckpt"
+    weight_path = "test.pt"
+    # generate_txt(root_path)
+    # checkpoint2model(None, ckpt_file, weight_path)
+    # test the valid of model file
+    model = PromptSam('vit_t', "C:\\Users\\chenyihan\\Downloads\\mobile_sam.pt", 8)
+    state = torch.load(weight_path, map_location="cpu")
+    try:
+        model.load_state_dict(state)
+    except:
+        from collections import OrderedDict
+        new_state = OrderedDict()
+        for k, v in state.items():
+            new_state[k[6:]] = state[k]         # PS:由于ckpt里存的'state_dict'的key多了个前缀"model.",所以从第六个字符开始
+        model.load_state_dict(new_state)
+    print(model)
