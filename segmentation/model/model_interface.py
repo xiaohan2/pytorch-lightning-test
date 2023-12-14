@@ -10,7 +10,7 @@ import importlib
 from torch.nn import functional as F
 import torch.optim.lr_scheduler as lrs
 import pytorch_lightning as pl
-from utils import get_confusion_matrix, BondaryLoss
+from utils import get_confusion_matrix, BondaryLoss, OhemCrossEntropy, calc_iou
 import numpy as np
 import segmentation_models_pytorch as smp
 
@@ -44,9 +44,12 @@ class MInterface(pl.LightningModule):
                 # loss = sum([sum([loss_function(x, labels) for x in out[:-1]]) for loss_function in self.loss_functions])
                 loss = sum([self.loss_functions[0](x, labels) for x in out[:-1]]) + self.loss_functions[1](out[-1],
                                                                                                            edge)
+            elif self.hparams["loss"][0] == 'ohem_ce':
+                loss = sum([loss_function(out, labels) for loss_function in self.loss_functions])
             else:
                 loss = sum([sum([loss_function(x, labels) for x in out]) for loss_function in self.loss_functions])
         else:
+            labels = labels.float() if 'bce_with_logits' in self.hparams["loss"] else labels
             loss = sum([loss_function(out, labels) for loss_function in self.loss_functions])
         self.log('loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"])
         return loss
@@ -60,7 +63,7 @@ class MInterface(pl.LightningModule):
         out = self(img)
         mean_iou = 0
         if self.hparams["model_name"] in ['pp_lite_seg', 'pid_net']:
-            num_putput = 3 if self.hparams["model_name"] == "pp_lite_seg" else 3
+            num_putput = 3
             confusion_matrix = np.zeros(
                 (self.hparams["num_classes"], self.hparams["num_classes"], num_putput))
             if not isinstance(out, (list, tuple)):
@@ -74,6 +77,8 @@ class MInterface(pl.LightningModule):
             if self.hparams["model_name"] == 'pid_net':
                 # loss = sum([sum([loss_function(x, labels) for x in out[:-1]]) for loss_function in self.loss_functions])
                 loss = sum([self.loss_functions[0](x, labels) for x in out[:-1]]) + self.loss_functions[1](out[-1], edge)
+            elif self.hparams["loss"][0] == 'ohem_ce':
+                loss = sum([loss_function(out, labels) for loss_function in self.loss_functions])
             else:
                 loss = sum([sum([loss_function(x, labels) for x in out]) for loss_function in self.loss_functions])
 
@@ -93,8 +98,21 @@ class MInterface(pl.LightningModule):
                 iou = iou_array.mean()
                 mean_iou += iou
             # mean_iou /= len(out)
+
+        elif self.hparams["model_name"] == 'prompt_sam':
+            labels = labels.float()
+            loss = sum([loss_function(out, labels) for loss_function in self.loss_functions])
+            pred = torch.sigmoid(out)
+            result_masks = []
+            label_masks = []
+            for n in range(self.hparams["num_classes"]):
+                temp_result = pred[:, n, :, :]
+                temp_label = labels[:, n, :, :]
+                result_masks.append(torch.where(temp_result >= 0.5, 255, 0).detach().cpu().squeeze().numpy())
+                label_masks.append(temp_label.detach().squeeze().cpu().numpy())
+            mean_iou = calc_iou(result_masks, label_masks)
         else:
-            loss = sum([self.loss_function(out, labels) for loss_function in self.loss_functions])
+            loss = sum([loss_function(out, labels) for loss_function in self.loss_functions])
             out = torch.softmax(out, dim=1)
             confusion_matrix = get_confusion_matrix(labels, out, labels.size(), self.hparams["num_classes"])
             pos = confusion_matrix.sum(1)
@@ -148,10 +166,14 @@ class MInterface(pl.LightningModule):
                 self.loss_functions.append(F.l1_loss)
             elif loss_name == 'bce':
                 self.loss_functions.append(F.binary_cross_entropy)
+            elif loss_name == 'bce_with_logits':
+                self.loss_functions.append(F.binary_cross_entropy_with_logits)
             elif loss_name == 'ce':
                 self.loss_functions.append(F.cross_entropy)
             elif loss_name == 'bd':
                 self.loss_functions.append(BondaryLoss())
+            elif loss_name == 'ohem_ce':
+                self.loss_functions.append(OhemCrossEntropy())
             else:
                 raise ValueError("Invalid Loss Type!")
 

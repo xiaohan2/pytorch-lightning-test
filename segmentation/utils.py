@@ -12,6 +12,7 @@ import torch.nn as nn
 import torch
 from torch.nn import functional as F
 
+
 def load_model_path(root=None, version=None, v_num=None, best=False):
     """ When best = True, return the best model's path in a directory
         by selecting the best model with largest epoch. If not, return
@@ -62,9 +63,12 @@ def write_to_file(file_path, data):
         for item in data:
             f.write(item + "\n")
 
+
 """
 生成所有图像的路径和其对应的标签，用于图像分类任务
 """
+
+
 def generate_txt(root_path):
     txt_path = os.path.join(root_path, "files.txt")
     all_infos = []
@@ -81,6 +85,7 @@ def generate_txt(root_path):
             all_infos.extend(infos)
     write_to_file(txt_path, all_infos)
 
+
 def get_confusion_matrix(label, pred, size, num_class, ignore=-1):
     """
     Calcute the confusion matrix by given label and pred
@@ -88,7 +93,7 @@ def get_confusion_matrix(label, pred, size, num_class, ignore=-1):
     output = pred.cpu().numpy().transpose(0, 2, 3, 1)
     seg_pred = np.asarray(np.argmax(output, axis=3), dtype=np.uint8)
     seg_gt = np.asarray(
-    label.cpu().numpy()[:, :size[-2], :size[-1]], dtype=int)
+        label.cpu().numpy()[:, :size[-2], :size[-1]], dtype=int)
 
     ignore_index = seg_gt != ignore
     seg_gt = seg_gt[ignore_index]
@@ -103,13 +108,13 @@ def get_confusion_matrix(label, pred, size, num_class, ignore=-1):
             cur_index = i_label * num_class + i_pred
             if cur_index < len(label_count):
                 confusion_matrix[i_label,
-                                 i_pred] = label_count[cur_index]
+                i_pred] = label_count[cur_index]
     return confusion_matrix
 
 
 def weighted_bce(bd_pre, target):
     n, c, h, w = bd_pre.size()
-    log_p = bd_pre.permute(0,2,3,1).contiguous().view(1, -1)
+    log_p = bd_pre.permute(0, 2, 3, 1).contiguous().view(1, -1)
     target_t = target.view(1, -1)
 
     pos_index = (target_t == 1)
@@ -137,6 +142,98 @@ class BondaryLoss(nn.Module):
         loss = bce_loss
 
         return loss
+
+
+class OhemCrossEntropy(nn.Module):
+    def __init__(self, ignore_label=-1, thres=0.7,
+                 min_kept=100000, weight=None):
+        super(OhemCrossEntropy, self).__init__()
+        self.thresh = thres
+        self.min_kept = max(1, min_kept)
+        self.ignore_label = ignore_label
+        self.criterion = nn.CrossEntropyLoss(
+            weight=weight,
+            ignore_index=ignore_label,
+            reduction='none'
+        )
+
+    def _ce_forward(self, score, target):
+        ph, pw = score.size(2), score.size(3)
+        h, w = target.size(1), target.size(2)
+        if ph != h or pw != w:
+            score = F.interpolate(input=score, size=(
+                h, w), mode='nearest')
+
+        loss = self.criterion(score, target)
+
+        return loss
+
+    def _ohem_forward(self, score, target, **kwargs):
+        ph, pw = score.size(2), score.size(3)
+        h, w = target.size(1), target.size(2)
+        if ph != h or pw != w:
+            score = F.interpolate(input=score, size=(
+                h, w), mode='nearest')
+        pred = F.softmax(score, dim=1)
+        pixel_losses = self.criterion(score, target).contiguous().view(-1)
+        mask = target.contiguous().view(-1) != self.ignore_label
+
+        tmp_target = target.clone()
+        tmp_target[tmp_target == self.ignore_label] = 0
+        pred = pred.gather(1, tmp_target.unsqueeze(1))
+        pred, ind = pred.contiguous().view(-1, )[mask].contiguous().sort()
+        min_value = pred[min(self.min_kept, pred.numel() - 1)]
+        threshold = max(min_value, self.thresh)
+
+        pixel_losses = pixel_losses[mask][ind]
+        pixel_losses = pixel_losses[pred < threshold]
+        return pixel_losses.mean()
+
+    def forward(self, score, target):
+        weights = [1, 1, 1]
+        assert len(weights) == len(score)
+        functions = [self._ce_forward] * \
+                    (len(weights) - 1) + [self._ohem_forward]
+        # print("loss weight : ",weights, len(score), functions)
+        loss = torch.unsqueeze(sum([
+            w * func(x, target)
+            for (w, x, func) in zip(weights, score, functions)
+        ]), 0).mean()
+        return loss
+
+
+def calc_iou(result_contours, label_contours):
+    assert len(result_contours) == len(label_contours)
+
+    total_iou = 0
+    for i in range(len(result_contours)):
+        # ignore the background
+        if i == 0:
+            continue
+
+        # ignore the neibi
+        # if i == 9 or i == 10:
+        #     continue
+
+        result_mask = result_contours[i]
+        label_mask = label_contours[i]
+        intersection = np.logical_and(result_mask, label_mask)
+        union = np.logical_or(result_mask, label_mask)
+        # plt.imshow(label_mask, cmap='gray')
+        # plt.show()
+        # plt.imshow(result_mask, cmap='gray')
+        # plt.show()
+
+        # the empty situation
+        if np.all(union == 0):
+            iou = 1
+        else:
+            iou = np.sum(intersection) / np.sum(union)
+        total_iou += iou
+
+    # -1：ignore the background
+    return total_iou / (len(result_contours) - 1)
+
 
 if __name__ == '__main__':
     root_path = "dataset/flower_photos"

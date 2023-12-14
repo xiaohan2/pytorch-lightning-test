@@ -20,7 +20,7 @@ import json
 
 class SegmentData(data.Dataset):
     def __init__(self, data_dir=r'../dataset/scratch',
-                 class_num=1,
+                 num_classes=2,
                  train=True,
                  no_augment=True,
                  aug_prob=0.5):
@@ -81,6 +81,33 @@ class SegmentData(data.Dataset):
         edge = edge[y_k_size:-y_k_size, x_k_size:-x_k_size]
         edge = np.pad(edge, ((y_k_size, y_k_size), (x_k_size, x_k_size)), mode='constant')
         edge = (cv2.dilate(edge, kernel, iterations=1) > 50) * 1.0
+
+        # 产品分割时对标签进行处理
+        masks = []
+        for i in range(self.num_classes):
+            temp = np.where(target == i, 1, 0)
+            masks.append(temp)
+
+        # label已经左右的标签合的情况
+        masks[1] = np.bitwise_or(masks[1], np.bitwise_or(masks[2], masks[3]))
+        masks[4] = np.bitwise_or(masks[4], masks[5])
+        masks[6] = np.bitwise_or(masks[6], masks[7])
+
+        # # 基座不扣
+        # masks[1] = np.bitwise_or(masks[1], np.bitwise_or(masks[2], masks[3]))
+        # # merge left and right
+        # masks[4] = np.bitwise_or(masks[4], masks[6])
+        # masks[5] = np.bitwise_or(masks[5], masks[7])
+        # masks[4] = np.bitwise_or(masks[4], masks[5])
+        # masks[5] = np.bitwise_or(masks[6], masks[7])
+        # # masks[6] = masks[8]
+        # # masks[7] = masks[9]
+        # 孤岛不扣
+        # masks[6] = np.bitwise_or(masks[8], masks[9])
+        # masks[7] = masks[9]
+        # masks = masks[:8]
+        target = np.array(masks)
+
         if image.ndim == 3:
             x = np.transpose(x, axes=[2, 0, 1])
         elif image.ndim == 2:

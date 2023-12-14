@@ -1,0 +1,16 @@
+{
+    "train_path": "./dataset/product/2016/train.txt",
+    "valid_path": "./dataset/product/2016/val.txt",
+    "test_path": "",
+    "num_classes": 8,
+    "is_normalize": true,
+    "crop_size": [1024, 1024],
+    "brightness": 0.5,
+    "contrast": 0.5,
+    "saturation": 0.5,
+    "img_mean":[0.485, 0.456, 0.406],
+    "img_std":[0.229, 0.224, 0.225],
+    "is_label_divide": false,
+    "need_edge": false,
+    "edge_size": 4
+}
