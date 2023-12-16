@@ -125,7 +125,7 @@ class PromptGen(nn.Module):
 
 class PromptSam(nn.Module):
     def __init__(self, sam_model_name, sam_checkpoint, num_classes=12, reduction=4, upsample_times=2, groups=4,
-                 prompt_input=False, prompt_type="fft", fft_type="highpass", freq_num=0.25) -> None:
+                 prompt_input=True, prompt_type="fft", fft_type="highpass", freq_num=0.25) -> None:
         super(PromptSam, self).__init__()
         # load same from the pretrained model
         self.sam = sam_model_registry[sam_model_name](checkpoint=sam_checkpoint)
