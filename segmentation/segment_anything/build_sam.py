@@ -8,40 +8,54 @@ import torch
 
 from functools import partial
 
-from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer, TinyViT
+from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer, TinyViT, RepViT
+
+
+prompt_embed_dim = 256
+image_size = 1024
+vit_patch_size = 16
+image_embedding_size = image_size // vit_patch_size
 
 
 def build_sam_vit_h(checkpoint=None):
-    return _build_sam(
+    image_encoder = _build_sam_encoder(
         encoder_embed_dim=1280,
         encoder_depth=32,
         encoder_num_heads=16,
-        encoder_global_attn_indexes=[7, 15, 23, 31],
-        checkpoint=checkpoint,
+        encoder_global_attn_indexes=[7, 15, 23, 31]
     )
-
+    return _build_sam(image_encoder, checkpoint)
 
 build_sam = build_sam_vit_h
 
-
 def build_sam_vit_l(checkpoint=None):
-    return _build_sam(
+    image_encoder = _build_sam_encoder(
         encoder_embed_dim=1024,
         encoder_depth=24,
         encoder_num_heads=16,
-        encoder_global_attn_indexes=[5, 11, 17, 23],
-        checkpoint=checkpoint,
+        encoder_global_attn_indexes=[5, 11, 17, 23]
     )
+    return _build_sam(image_encoder, checkpoint)
 
 
 def build_sam_vit_b(checkpoint=None):
-    return _build_sam(
+    image_encoder = _build_sam_encoder(
         encoder_embed_dim=768,
         encoder_depth=12,
         encoder_num_heads=12,
-        encoder_global_attn_indexes=[2, 5, 8, 11],
-        checkpoint=checkpoint,
+        encoder_global_attn_indexes=[2, 5, 8, 11]
     )
+    return _build_sam(image_encoder, checkpoint)
+
+
+def build_edge_sam(checkpoint=None, upsample_mode="bicubic"):
+    image_encoder = RepViT(
+        arch="m1",
+        img_size=image_size,
+        upsample_mode=upsample_mode
+    )
+    return _build_sam(image_encoder, checkpoint)
+
 
 def build_sam_vit_t(checkpoint=None):
     prompt_embed_dim = 256
@@ -97,35 +111,39 @@ sam_model_registry = {
     "vit_l": build_sam_vit_l,
     "vit_b": build_sam_vit_b,
     "vit_t": build_sam_vit_t,
+    "edge_sam": build_edge_sam,
 }
 
 
-def _build_sam(
+def _build_sam_encoder(
     encoder_embed_dim,
     encoder_depth,
     encoder_num_heads,
     encoder_global_attn_indexes,
+):
+    image_encoder = ImageEncoderViT(
+        depth=encoder_depth,
+        embed_dim=encoder_embed_dim,
+        img_size=image_size,
+        mlp_ratio=4,
+        norm_layer=partial(torch.nn.LayerNorm, eps=1e-6),
+        num_heads=encoder_num_heads,
+        patch_size=vit_patch_size,
+        qkv_bias=True,
+        use_rel_pos=True,
+        global_attn_indexes=encoder_global_attn_indexes,
+        window_size=14,
+        out_chans=prompt_embed_dim,
+    )
+    return image_encoder
+
+
+def _build_sam(
+    image_encoder,
     checkpoint=None,
 ):
-    prompt_embed_dim = 256
-    image_size = 1024
-    vit_patch_size = 16
-    image_embedding_size = image_size // vit_patch_size
     sam = Sam(
-        image_encoder=ImageEncoderViT(
-            depth=encoder_depth,
-            embed_dim=encoder_embed_dim,
-            img_size=image_size,
-            mlp_ratio=4,
-            norm_layer=partial(torch.nn.LayerNorm, eps=1e-6),
-            num_heads=encoder_num_heads,
-            patch_size=vit_patch_size,
-            qkv_bias=True,
-            use_rel_pos=True,
-            global_attn_indexes=encoder_global_attn_indexes,
-            window_size=14,
-            out_chans=prompt_embed_dim,
-        ),
+        image_encoder=image_encoder,
         prompt_encoder=PromptEncoder(
             embed_dim=prompt_embed_dim,
             image_embedding_size=(image_embedding_size, image_embedding_size),
@@ -150,6 +168,6 @@ def _build_sam(
     sam.eval()
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
-            state_dict = torch.load(f)
+            state_dict = torch.load(f, map_location="cpu")
         sam.load_state_dict(state_dict)
     return sam

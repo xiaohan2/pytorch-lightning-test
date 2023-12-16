@@ -81,33 +81,38 @@ class FFTPrompt(nn.Module):
 
 
 class PromptGen(nn.Module):
-    def __init__(self, blk, reduction=4, cls_token=False, reshape=False, seq_size=None) -> None:
+    def __init__(self, blk, reduction=4, cls_token=False, reshape=False, seq_size=None, model_name='vit_h') -> None:
         super(PromptGen, self).__init__()
         self.block = blk
-        dim = blk.attn.qkv.in_features
+        dim = blk.token_mixer[1].fc2.out_channels if model_name == 'edge_sam' else blk.attn.qkv.in_features
         prompt_dim = dim // reduction
-        self.prompt_learn = nn.Sequential(
-            # nn.Linear(dim, 32),
-            # nn.GELU(),
-            # nn.Linear(32, dim),
-            # nn.GELU()
-            nn.Conv2d(dim, prompt_dim, 1, 1),
-            LayerNorm2d(prompt_dim),
-            nn.GELU(),
-            nn.Conv2d(prompt_dim, prompt_dim, 3, 1, 1, groups=prompt_dim, bias=False),
-            LayerNorm2d(prompt_dim),
-            nn.GELU(),
-            nn.Conv2d(prompt_dim, dim, 1, 1),
-            LayerNorm2d(dim),
-            nn.GELU()
-        )
+        if model_name == 'vit_t':
+            self.prompt_learn = nn.Sequential(
+                nn.Linear(dim, prompt_dim),
+                nn.GELU(),
+                nn.Linear(prompt_dim, dim),
+                nn.GELU()
+            )
+        else:
+            self.prompt_learn = nn.Sequential(
+                nn.Conv2d(dim, prompt_dim, 1, 1),
+                LayerNorm2d(prompt_dim),
+                nn.GELU(),
+                nn.Conv2d(prompt_dim, prompt_dim, 3, 1, 1, groups=prompt_dim, bias=False),
+                LayerNorm2d(prompt_dim),
+                nn.GELU(),
+                nn.Conv2d(prompt_dim, dim, 1, 1),
+                LayerNorm2d(dim),
+                nn.GELU()
+            )
         self.cls_token = cls_token
         self.reshape = reshape
         self.seq_size = seq_size
+        self.model_name = model_name
 
     def forward(self, x):
         if self.cls_token:
-            tokens = x[:, 1:]
+            tokens = x[:,1:]
             bs, seq_len, dim = tokens.size()
             if self.reshape:
                 tokens = tokens.reshape(-1, self.seq_size, self.seq_size, dim).permute(0, 3, 1, 2)
@@ -116,8 +121,10 @@ class PromptGen(nn.Module):
             promped = promped.reshape(bs, dim, seq_len).transpose(1, 2)
             promped = torch.cat([x[:, 0].unsqueeze(1), promped], dim=1)
         else:
-            prompt = self.prompt_learn(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
-            # prompt = self.prompt_learn(x)
+            if self.model_name in ['vit_t', 'edge_sam']:
+                prompt = self.prompt_learn(x)
+            else:
+                prompt = self.prompt_learn(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
             promped = x + prompt
         net = self.block(promped)
         return net
@@ -125,7 +132,7 @@ class PromptGen(nn.Module):
 
 class PromptSam(nn.Module):
     def __init__(self, sam_model_name, sam_checkpoint, num_classes=12, reduction=4, upsample_times=2, groups=4,
-                 prompt_input=True, prompt_type="fft", fft_type="highpass", freq_num=0.25) -> None:
+                 prompt_input=False, prompt_type="fft", fft_type="highpass", freq_num=0.25) -> None:
         super(PromptSam, self).__init__()
         # load same from the pretrained model
         self.sam = sam_model_registry[sam_model_name](checkpoint=sam_checkpoint)
@@ -136,20 +143,35 @@ class PromptSam(nn.Module):
             param.requires_grad = False
         self.img_size = self.sam.image_encoder.img_size
         blocks = []
+        # print("before prompt:", self.sam.image_encoder)
         if sam_model_name == "vit_t":
-            for layer in self.sam.image_encoder.layers[1:]:
+            for i, layer in enumerate(self.sam.image_encoder.layers[1:], start=1):
+                blocks = []
                 for block in layer.blocks:
                     blocks.append(
-                        PromptGen(block, reduction=reduction)
+                        PromptGen(block, reduction=reduction, model_name=sam_model_name)
+                    )
+                self.sam.image_encoder.layers[i].blocks = nn.Sequential(
+                    *blocks
+                )
+        elif sam_model_name == "edge_sam":
+            for i, layer in enumerate(self.sam.image_encoder.features[1:], start=1):
+                blocks = []
+                if len(layer.token_mixer) > 1 and hasattr(layer.token_mixer[1], 'fc2'):
+                    blocks.append(PromptGen(layer, reduction=reduction, model_name=sam_model_name))
+                if len(blocks) > 0:
+                    self.sam.image_encoder.features[i] = nn.Sequential(
+                        *blocks
                     )
         else:
             for block in self.sam.image_encoder.blocks:
                 blocks.append(
                     PromptGen(block, reduction=reduction)
                 )
-        self.sam.image_encoder.blocks = nn.Sequential(
-            *blocks
-        )
+            self.sam.image_encoder.blocks = nn.Sequential(
+                *blocks
+            )
+        # print("after prompt:", self.sam.image_encoder)
         self.up_conv = nn.ModuleDict()
         self.up_times = upsample_times
         dim = out_dim
