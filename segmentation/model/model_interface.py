@@ -74,14 +74,6 @@ class MInterface(pl.LightningModule):
                 for i in range(len(out)):
                     out[i] = F.interpolate(out[i], size=size[-2:], mode='bilinear', align_corners=True)
 
-            if self.hparams["model_name"] == 'pid_net':
-                # loss = sum([sum([loss_function(x, labels) for x in out[:-1]]) for loss_function in self.loss_functions])
-                loss = sum([self.loss_functions[0](x, labels) for x in out[:-1]]) + self.loss_functions[1](out[-1], edge)
-            elif self.hparams["loss"][0] == 'ohem_ce':
-                loss = sum([loss_function(out, labels) for loss_function in self.loss_functions])
-            else:
-                loss = sum([sum([loss_function(x, labels) for x in out]) for loss_function in self.loss_functions])
-
             for i, x in enumerate(out):
                 confusion_matrix[..., i] += get_confusion_matrix(
                     labels,
@@ -101,7 +93,6 @@ class MInterface(pl.LightningModule):
 
         elif self.hparams["model_name"] == 'prompt_sam':
             labels = labels.float()
-            loss = sum([loss_function(out, labels) for loss_function in self.loss_functions])
             pred = torch.sigmoid(out)
             result_masks = []
             label_masks = []
@@ -112,7 +103,6 @@ class MInterface(pl.LightningModule):
                 label_masks.append(temp_label.detach().squeeze().cpu().numpy())
             mean_iou = calc_iou(result_masks, label_masks)
         else:
-            loss = sum([loss_function(out, labels) for loss_function in self.loss_functions])
             out = torch.softmax(out, dim=1)
             confusion_matrix = get_confusion_matrix(labels, out, labels.size(), self.hparams["num_classes"])
             pos = confusion_matrix.sum(1)
@@ -120,13 +110,9 @@ class MInterface(pl.LightningModule):
             tp = np.diag(confusion_matrix)
             iou_array = (tp / np.maximum(1.0, pos + res - tp))
             mean_iou = iou_array.mean()
-        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"],
-                 sync_dist=len(self.hparams["devices"]) > 1)
         self.log('val_iou', mean_iou,
                  on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"],
                  sync_dist=len(self.hparams["devices"]) > 1)
-
-        return loss
 
     def test_step(self, batch, batch_idx):
         # Here we just reuse the validation_step for testing
