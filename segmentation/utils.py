@@ -121,7 +121,7 @@ def weighted_bce(bd_pre, target):
     pos_index = (target_t == 1)
     neg_index = (target_t == 0)
 
-    weight = torch.zeros_like(log_p)
+    weight = torch.zeros_like(log_p, dtype=torch.float32)
     pos_num = pos_index.sum()
     neg_num = neg_index.sum()
     sum_num = pos_num + neg_num
@@ -252,19 +252,20 @@ def checkpoint2model(ckpt_file, save_path):
 
 
 if __name__ == '__main__':
+
     root_path = "dataset/flower_photos"
-    ckpt_file = "lightning_logs/version_18/checkpoints/best-epoch=600-val_iou=0.964.ckpt"
+    ckpt_file = r"C:\Users\chenyihan\PycharmProjects\best-epoch=318-val_iou=0.864.ckpt"
     weight_path = "test.pt"
     # generate_txt(root_path)
-    # checkpoint2model(ckpt_file, weight_path)
+    checkpoint2model(ckpt_file, weight_path)
     # test the valid of model file
-    model = PromptSam('vit_t', "C:\\Users\\chenyihan\\Downloads\\mobile_sam.pt", 8)
-    state = torch.load(weight_path, map_location="cpu")
-    try:
-        model.load_state_dict(state)
-    except:
-        new_state = OrderedDict()
-        for k, v in state.items():
-            new_state[k[7:]] = state[k]         # PS:由于ckpt里存的'state_dict'的key多了个前缀"model.",所以从第六个字符开始
-        model.load_state_dict(new_state)
-    print(model)
+    # model = PromptSam('vit_t', "C:\\Users\\chenyihan\\Downloads\\mobile_sam.pt", 8)
+    # state = torch.load(weight_path, map_location="cpu")
+    # try:
+    #     model.load_state_dict(state)
+    # except:
+    #     new_state = OrderedDict()
+    #     for k, v in state.items():
+    #         new_state[k[7:]] = state[k]         # PS:由于ckpt里存的'state_dict'的key多了个前缀"model.",所以从第六个字符开始
+    #     model.load_state_dict(new_state)
+    # print(model)
