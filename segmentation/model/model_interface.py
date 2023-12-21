@@ -49,6 +49,9 @@ class MInterface(pl.LightningModule):
             else:
                 loss = sum([sum([loss_function(x, labels) for x in out]) for loss_function in self.loss_functions])
         else:
+            if self.hparams["model_name"] == 'sam_seg_net':
+                out = out[0]
+                out = out.view(self.hparams["batch_size"], -1, out.size(2), out.size(3))
             labels = labels.float() if 'bce_with_logits' in self.hparams["loss"] else labels
             loss = sum([loss_function(out, labels) for loss_function in self.loss_functions])
         self.log('loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"])
@@ -91,8 +94,11 @@ class MInterface(pl.LightningModule):
                 mean_iou += iou
             # mean_iou /= len(out)
 
-        elif self.hparams["model_name"] == 'prompt_sam':
+        elif self.hparams["model_name"] in ['prompt_sam', 'sam_seg_net', 'sam_feat_seg_net']:
             labels = labels.float()
+            if self.hparams["model_name"] == 'sam_seg_net':
+                out = out[0]
+                out = out.view(self.hparams["batch_size"], -1, out.size(2), out.size(3))
             pred = torch.sigmoid(out)
             result_masks = []
             label_masks = []

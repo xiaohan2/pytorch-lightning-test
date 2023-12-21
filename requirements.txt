@@ -4,3 +4,6 @@ pytorch_lightning
 argparse
 numpy
 segmentation_models_pytorch
+pathlib2
+albumentations
+scikit-learn

@@ -56,7 +56,7 @@ def main(args):
     # args.logger = logger
     # 根据当前系统决定使用哪个backend..  PS:windows下分布式训练只只能用gloo，只有linux才支持nccl
     precision = '32-true'
-    if args.mixed-precision:
+    if args.mixed_precision:
         precision = '16-mixed'
     trainer = Trainer(limit_train_batches=100, max_epochs=args.epochs, devices=args.devices, log_every_n_steps=16,
                       callbacks=args.callbacks, precision=precision)
