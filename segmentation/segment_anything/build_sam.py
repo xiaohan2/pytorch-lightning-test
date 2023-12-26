@@ -10,11 +10,33 @@ from functools import partial
 
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer, TinyViT, RepViT
 
+from torch.nn import functional as F
 
 prompt_embed_dim = 256
-image_size = 1024
+image_size = 896
 vit_patch_size = 16
 image_embedding_size = image_size // vit_patch_size
+
+
+def load_from(samus, sam_dict, image_size, patch_size): # load the positional embedding
+    samus_dict = samus.state_dict()
+    dict_trained = {k: v for k, v in sam_dict.items() if k in samus_dict}
+    token_size = int(image_size//patch_size)
+    pos_embed = dict_trained['image_encoder.pos_embed']
+    pos_embed = pos_embed.permute(0, 3, 1, 2)  # [b, c, h, w]
+    pos_embed = F.interpolate(pos_embed, (token_size, token_size), mode='bilinear', align_corners=False)
+    pos_embed = pos_embed.permute(0, 2, 3, 1)  # [b, h, w, c]
+    dict_trained['image_encoder.pos_embed'] = pos_embed
+    rel_pos_keys = [k for k in dict_trained.keys() if 'rel_pos' in k]
+    global_rel_pos_keys = [k for k in rel_pos_keys if '7' in k or '15' in k or '23' in k or '31' in k]
+    for k in global_rel_pos_keys:
+        rel_pos_params = dict_trained[k]
+        h, w = samus_dict[k].shape
+        rel_pos_params = rel_pos_params.unsqueeze(0).unsqueeze(0)
+        rel_pos_params = F.interpolate(rel_pos_params, (h, w), mode='bilinear', align_corners=False)
+        dict_trained[k] = rel_pos_params[0, 0, ...]
+    samus_dict.update(dict_trained)
+    return samus_dict
 
 
 def build_sam_vit_h(checkpoint=None):
@@ -166,8 +188,16 @@ def _build_sam(
         pixel_std=[58.395, 57.12, 57.375],
     )
     sam.eval()
+    # if checkpoint is not None:
+    #     with open(checkpoint, "rb") as f:
+    #         state_dict = torch.load(f, map_location="cpu")
+    #     sam.load_state_dict(state_dict)
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
-            state_dict = torch.load(f, map_location="cpu")
-        sam.load_state_dict(state_dict)
+            state_dict = torch.load(f)
+        try:
+            sam.load_state_dict(state_dict)
+        except:
+            new_state_dict = load_from(sam, state_dict, image_size, vit_patch_size)
+            sam.load_state_dict(new_state_dict)
     return sam
