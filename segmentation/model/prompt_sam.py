@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from segment_anything.modeling.common import LayerNorm2d
-from segment_anything import sam_model_registry
+from segmentation.segment_anything.modeling.common import LayerNorm2d
+from segmentation.segment_anything import sam_model_registry
 
 
 class ImagePool(nn.Module):
@@ -131,11 +131,11 @@ class PromptGen(nn.Module):
 
 
 class PromptSam(nn.Module):
-    def __init__(self, sam_model_name, sam_checkpoint, num_classes=12, reduction=4, upsample_times=2, groups=4,
+    def __init__(self, image_size, sam_model_name, sam_checkpoint, num_classes=12, reduction=4, upsample_times=2, groups=4,
                  prompt_input=False, prompt_type="fft", fft_type="highpass", freq_num=0.25) -> None:
         super(PromptSam, self).__init__()
         # load same from the pretrained model
-        self.sam = sam_model_registry[sam_model_name](checkpoint=sam_checkpoint)
+        self.sam = sam_model_registry[sam_model_name](image_size=image_size, checkpoint=sam_checkpoint)
         del self.sam.prompt_encoder
         del self.sam.mask_decoder
         out_dim = self.sam.image_encoder.neck[0].out_channels
