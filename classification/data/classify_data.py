@@ -10,6 +10,8 @@ import numpy as np
 import torch.utils.data as data
 import cv2
 from torchvision import transforms
+from albumentations import Compose, Resize, Normalize, ColorJitter, VerticalFlip, HorizontalFlip
+from albumentations.pytorch import ToTensorV2
 from sklearn.model_selection import train_test_split
 
 
@@ -18,9 +20,10 @@ class ClassifyData(data.Dataset):
                  class_num=5,
                  train=True,
                  no_augment=True,
+                 input_size=[224, 224],
                  aug_prob=0.5,
-                 img_mean=(0.485, 0.456, 0.406),
-                 img_std=(0.229, 0.224, 0.225)):
+                 img_mean=[0.485, 0.456, 0.406],
+                 img_std=[0.229, 0.224, 0.225]):
         # Set all input args as attributes
         self.__dict__.update(locals())
         self.aug = train and not no_augment
@@ -54,19 +57,21 @@ class ClassifyData(data.Dataset):
         labels = self.to_one_hot(int(label_index))
         labels = torch.from_numpy(labels).float()
 
-        trans = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.RandomHorizontalFlip(self.aug_prob),
-            transforms.RandomVerticalFlip(self.aug_prob),
-            transforms.RandomRotation(10),
-            transforms.RandomCrop(128),
-            transforms.Normalize(self.img_mean, self.img_std)]
-        ) if self.train else transforms.Compose(
+        trans = Compose([
+            ColorJitter(),
+            VerticalFlip(),
+            HorizontalFlip(),
+            Resize(self.input_size[0], self.input_size[1]),
+            Normalize(mean=self.img_mean, std=self.img_std),
+            ToTensorV2(),
+        ]
+        ) if self.train else Compose(
             [
-                transforms.ToTensor(), transforms.CenterCrop(128),
-                transforms.Normalize(self.img_mean, self.img_std)]
+                Resize(self.input_size[0], self.input_size[1]),
+                Normalize(mean=self.img_mean, std=self.img_std),
+                ToTensorV2(),
+            ]
         )
 
-        img_tensor = trans(img)
-
+        img_tensor = trans(image=img)['image']
         return img_tensor, labels

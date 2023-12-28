@@ -8,6 +8,8 @@
 import inspect
 import torch
 import importlib
+import timm
+import torchvision.models
 from torch.nn import functional as F
 import torch.optim.lr_scheduler as lrs
 import pytorch_lightning as pl
@@ -35,7 +37,7 @@ class MInterface(pl.LightningModule):
         out = self(img)
         loss = self.loss_function(out, labels)
         label_digit = labels.argmax(axis=1)
-        out_digit = out.argmax(axis=1)
+        out_digit = out.argmax(dim=1)
         correct_num = sum(label_digit == out_digit).cpu().item()
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"],
                  sync_dist=len(self.hparams["devices"]) > 1)
@@ -86,6 +88,9 @@ class MInterface(pl.LightningModule):
 
     def load_model(self):
         name = self.hparams.model_name
+        if name == "resnet50":
+            self.model = timm.create_model('resnet50', num_classes=5, pretrained=True)
+            return
         # Change the `snake_case.py` file name to `CamelCase` class name.
         # Please always name your model file name as `snake_case.py` and
         # class name corresponding `CamelCase`.
