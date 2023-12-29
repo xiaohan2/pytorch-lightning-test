@@ -35,16 +35,17 @@ class MInterface(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         img, labels = batch
         out = self(img)
-        loss = self.loss_function(out, labels)
+        # loss = self.loss_function(out, labels)
         label_digit = labels.argmax(axis=1)
         out_digit = out.argmax(dim=1)
         correct_num = sum(label_digit == out_digit).cpu().item()
-        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"],
-                 sync_dist=len(self.hparams["devices"]) > 1)
-        self.log('val_acc', correct_num/len(out_digit),
+        val_acc = correct_num/len(out_digit)
+        # self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"],
+        #          sync_dist=len(self.hparams["devices"]) > 1)
+        self.log('val_acc', val_acc,
                  on_step=False, on_epoch=True, prog_bar=True, batch_size=self.hparams["batch_size"],
                  sync_dist=len(self.hparams["devices"]) > 1)
-        return loss
+        return val_acc
 
     def test_step(self, batch, batch_idx):
         # Here we just reuse the validation_step for testing
