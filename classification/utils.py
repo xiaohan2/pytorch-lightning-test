@@ -5,6 +5,10 @@
 @Desc  :
 """
 import os
+from collections import OrderedDict
+
+import timm
+import torch
 from pathlib2 import Path
 import cv2
 import numpy as np
@@ -103,6 +107,25 @@ def get_confusion_matrix(label, pred, size, num_class, ignore=-1):
                                  i_pred] = label_count[cur_index]
     return confusion_matrix
 
+
+def export_script(model_path, export_path):
+    model = timm.create_model('mobilevit_s.cvnets_in1k', pretrained=False, num_classes=3)
+    model.eval()
+    state = torch.load(model_path)['state_dict']
+    new_state = OrderedDict()
+    for k, v in state.items():
+        new_state[k[6:]] = state[k]
+    model.load_state_dict(new_state)
+    example_input = torch.randn(1, 3, 768, 768)
+
+    # 进行跟踪tracing
+    traced_model = torch.jit.trace(model, example_input)
+    traced_model.save(export_path)
+
+
 if __name__ == '__main__':
-    root_path = "dataset/flower_photos"
-    generate_txt(root_path)
+    # root_path = "dataset/2016tiehuan"
+    # generate_txt(root_path)
+    model_path = r"C:\Users\chenyihan\PycharmProjects\pytorch_lightning_test\classification\lightning_logs\version_6\checkpoints\best-epoch=11-val_acc=1.000.ckpt"
+    export_path = "test.pt"
+    export_script(model_path,export_path)

@@ -21,7 +21,7 @@ def load_callbacks(args):
     callbacks = [plc.EarlyStopping(
         monitor='val_acc',
         mode='max',
-        patience=50,
+        patience=100,
         min_delta=0.001
     ), plc.ModelCheckpoint(
         monitor='val_acc',

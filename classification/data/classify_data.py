@@ -10,14 +10,14 @@ import numpy as np
 import torch.utils.data as data
 import cv2
 from torchvision import transforms
-from albumentations import Compose, Resize, Normalize, ColorJitter, VerticalFlip, HorizontalFlip
+from albumentations import Compose, Resize, Normalize, ColorJitter, VerticalFlip, HorizontalFlip, Cutout
 from albumentations.pytorch import ToTensorV2
 from sklearn.model_selection import train_test_split
 
 
 class ClassifyData(data.Dataset):
     def __init__(self, data_dir=r'../dataset/flower_photos',
-                 class_num=5,
+                 num_classes=5,
                  train=True,
                  no_augment=True,
                  input_size=[224, 224],
@@ -45,7 +45,7 @@ class ClassifyData(data.Dataset):
         return len(self.path_list)
 
     def to_one_hot(self, idx):
-        out = np.zeros(self.class_num, dtype=float)
+        out = np.zeros(self.num_classes, dtype=float)
         out[idx] = 1
         return out
 
@@ -58,7 +58,7 @@ class ClassifyData(data.Dataset):
         labels = torch.from_numpy(labels).float()
 
         trans = Compose([
-            ColorJitter(),
+            ColorJitter(brightness=0.1,contrast=0.1,saturation=0.1,hue=0.1),
             VerticalFlip(),
             HorizontalFlip(),
             Resize(self.input_size[0], self.input_size[1]),
