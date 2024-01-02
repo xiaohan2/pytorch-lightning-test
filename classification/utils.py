@@ -108,8 +108,8 @@ def get_confusion_matrix(label, pred, size, num_class, ignore=-1):
     return confusion_matrix
 
 
-def export_script(model_path, export_path):
-    model = timm.create_model('mobilevit_s.cvnets_in1k', pretrained=False, num_classes=3)
+def export_script(model_path, export_path, num_classes=2):
+    model = timm.create_model('mobilevit_s.cvnets_in1k', pretrained=False, num_classes=num_classes)
     model.eval()
     state = torch.load(model_path)['state_dict']
     new_state = OrderedDict()
@@ -126,6 +126,6 @@ def export_script(model_path, export_path):
 if __name__ == '__main__':
     # root_path = "dataset/2016tiehuan"
     # generate_txt(root_path)
-    model_path = r"C:\Users\chenyihan\PycharmProjects\pytorch_lightning_test\classification\lightning_logs\version_6\checkpoints\best-epoch=11-val_acc=1.000.ckpt"
-    export_path = "test.pt"
+    model_path = r"C:\Users\chenyihan\Desktop\model_class\wangyin_val_acc=1.000.ckpt"
+    export_path = "wangyin.pt"
     export_script(model_path,export_path)
