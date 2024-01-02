@@ -90,10 +90,10 @@ class MInterface(pl.LightningModule):
     def load_model(self):
         name = self.hparams.model_name
         if name == "resnet50":
-            self.model = timm.create_model('resnet50', num_classes=self.hparams['num_classes'], pretrained=True)
+            self.model = timm.create_model('resnet50', num_classes=self.hparams.num_classes, pretrained=True)
             return
         elif name == "mobilevit_s":
-            self.model = timm.create_model('mobilevit_s.cvnets_in1k', pretrained=True, num_classes=self.hparams['num_classes'])
+            self.model = timm.create_model('mobilevit_s.cvnets_in1k', pretrained=True, num_classes=self.hparams.num_classes)
             return
         # Change the `snake_case.py` file name to `CamelCase` class name.
         # Please always name your model file name as `snake_case.py` and

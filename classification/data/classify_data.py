@@ -37,8 +37,9 @@ class ClassifyData(data.Dataset):
         file_list_path = op.join(self.data_dir, 'files.txt')
         with open(file_list_path, 'r') as f:
             file_list = [file.strip("\n") for file in f.readlines()]
+            label_list = [file.split(' ')[-1] for file in file_list]
         fl_train, fl_val = train_test_split(
-            file_list, test_size=0.2, random_state=2023)
+            file_list, test_size=0.2, random_state=2023, stratify=label_list)
         self.path_list = fl_train if self.train else fl_val
 
     def __len__(self):
