@@ -55,6 +55,7 @@ class ClassifyData(data.Dataset):
         label_index = self.path_list[idx].split(' ')[-1]
         filename = op.splitext(op.basename(img_path))[0]
         img = cv2.imread(img_path)
+        img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
         labels = self.to_one_hot(int(label_index))
         labels = torch.from_numpy(labels).float()
 
