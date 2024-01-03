@@ -54,6 +54,7 @@ class SegmentData(data.Dataset):
         img_path, label_path = os.path.join(self.data_dir, img_path), os.path.join(self.data_dir, label_path)
         filename = op.splitext(op.basename(img_path))[0]
         image = cv2.imread(img_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label = cv2.imread(label_path, 0)   #读取标签使用单通道灰度图
         if self.is_label_divide:
             label = label // 255
@@ -88,6 +89,9 @@ class SegmentData(data.Dataset):
             temp = np.where(target == i, 1, 0)
             masks.append(temp)
 
+        """
+        2016标签的处理方式
+        """
         # label已经左右的标签合的情况
         masks[1] = np.bitwise_or(masks[1], np.bitwise_or(masks[2], masks[3]))
         masks[4] = np.bitwise_or(masks[4], masks[5])
@@ -106,6 +110,16 @@ class SegmentData(data.Dataset):
         # masks[6] = np.bitwise_or(masks[8], masks[9])
         # masks[7] = masks[9]
         # masks = masks[:8]
+
+        """
+        238标签的处理方式
+        """
+        # masks[8] = np.bitwise_or(masks[8], masks[11])
+        # masks[9] = np.bitwise_or(masks[9], masks[12])
+        # masks[10] = np.bitwise_or(masks[10], masks[13])
+        # masks[5] = np.bitwise_or(masks[5], masks[10])
+        # masks[4] = np.bitwise_or(np.bitwise_or(masks[4], masks[5]), np.bitwise_or(masks[8], masks[9]))
+        # masks = masks[1:]
         target = np.array(masks)
 
         if image.ndim == 3:
