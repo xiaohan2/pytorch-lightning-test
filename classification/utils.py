@@ -13,6 +13,7 @@ from pathlib2 import Path
 import cv2
 import numpy as np
 
+
 def load_model_path(root=None, version=None, v_num=None, best=False):
     """ When best = True, return the best model's path in a directory
         by selecting the best model with largest epoch. If not, return
@@ -63,10 +64,13 @@ def write_to_file(file_path, data):
         for item in data:
             f.write(item + "\n")
 
+
 """
 生成所有图像的路径和其对应的标签，用于图像分类任务
 """
-def generate_txt(root_path):
+
+
+def generate_txt(root_path, label_dict):
     txt_path = os.path.join(root_path, "files.txt")
     all_infos = []
     for root, dirs, files in os.walk(root_path):
@@ -78,9 +82,11 @@ def generate_txt(root_path):
             if os.path.isfile(img_dir):
                 continue
             img_file_paths = os.listdir(img_dir)
-            infos = [os.path.join(img_dir, file) + " " + str(i) for file in img_file_paths]
+            infos = [os.path.join(img_dir, file) + " " + str(label_dict[os.path.basename(img_dir)]) for file in
+                     img_file_paths]
             all_infos.extend(infos)
     write_to_file(txt_path, all_infos)
+
 
 def get_confusion_matrix(label, pred, size, num_class, ignore=-1):
     """
@@ -89,7 +95,7 @@ def get_confusion_matrix(label, pred, size, num_class, ignore=-1):
     output = pred.cpu().numpy().transpose(0, 2, 3, 1)
     seg_pred = np.asarray(np.argmax(output, axis=3), dtype=np.uint8)
     seg_gt = np.asarray(
-    label.cpu().numpy()[:, :size[-2], :size[-1]], dtype=int)
+        label.cpu().numpy()[:, :size[-2], :size[-1]], dtype=int)
 
     ignore_index = seg_gt != ignore
     seg_gt = seg_gt[ignore_index]
@@ -104,7 +110,7 @@ def get_confusion_matrix(label, pred, size, num_class, ignore=-1):
             cur_index = i_label * num_class + i_pred
             if cur_index < len(label_count):
                 confusion_matrix[i_label,
-                                 i_pred] = label_count[cur_index]
+                i_pred] = label_count[cur_index]
     return confusion_matrix
 
 
@@ -116,7 +122,7 @@ def export_script(model_path, export_path, num_classes=2):
     for k, v in state.items():
         new_state[k[6:]] = state[k]
     model.load_state_dict(new_state)
-    example_input = torch.randn(1, 3, 768, 768)
+    example_input = torch.randn(1, 3, 200, 200)
 
     # 进行跟踪tracing
     traced_model = torch.jit.trace(model, example_input)
@@ -124,8 +130,9 @@ def export_script(model_path, export_path, num_classes=2):
 
 
 if __name__ == '__main__':
-    # root_path = "dataset/2016tiehuan"
-    # generate_txt(root_path)
-    model_path = r"C:\Users\chenyihan\Desktop\model_class\wangyin_val_acc=1.000.ckpt"
-    export_path = "wangyin.pt"
-    export_script(model_path,export_path)
+    root_path = "dataset/2016tiehuan"
+    label_dict = {"ok": 0, "wuhuan": 1, "duohuan": 2}
+    generate_txt(root_path, label_dict)
+    # model_path = r"C:\Users\chenyihan\Desktop\model_class\buping_val_acc=0.794.ckpt"
+    # export_path = "buping.pt"
+    # export_script(model_path,export_path)
